@@ -31,3 +31,6 @@ yarn.lock
 # Environment
 .env
 .env.local
+
+# opensrc - source code for packages
+opensrc/
