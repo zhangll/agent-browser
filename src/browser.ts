@@ -50,6 +50,16 @@ interface TrackedRequest {
   headers: Record<string, string>;
   timestamp: number;
   resourceType: string;
+  status?: number;
+  statusText?: string;
+  ok?: boolean;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
+  responseBodyEncoding?: 'utf8' | 'base64';
+  responseBodyBytes?: number;
+  responseBodyTruncated?: boolean;
+  responseTimestamp?: number;
+  failureText?: string;
 }
 
 interface ConsoleMessage {
@@ -76,6 +86,8 @@ export class BrowserManager {
   private activeFrame: Frame | null = null;
   private dialogHandler: ((dialog: Dialog) => Promise<void>) | null = null;
   private trackedRequests: TrackedRequest[] = [];
+  private requestMap: WeakMap<Request, TrackedRequest> = new WeakMap();
+  private requestTrackingStarted: boolean = false;
   private routes: Map<string, (route: Route) => Promise<void>> = new Map();
   private consoleMessages: ConsoleMessage[] = [];
   private pageErrors: PageError[] = [];
@@ -271,15 +283,96 @@ export class BrowserManager {
    * Start tracking requests
    */
   startRequestTracking(): void {
+    if (this.requestTrackingStarted) {
+      return;
+    }
+    this.requestTrackingStarted = true;
     const page = this.getPage();
     page.on('request', (request: Request) => {
-      this.trackedRequests.push({
+      const entry: TrackedRequest = {
         url: request.url(),
         method: request.method(),
         headers: request.headers(),
         timestamp: Date.now(),
         resourceType: request.resourceType(),
-      });
+      };
+      this.trackedRequests.push(entry);
+      this.requestMap.set(request, entry);
+    });
+
+    page.on('requestfailed', (request: Request) => {
+      const entry = this.requestMap.get(request);
+      if (!entry) return;
+      const failure = request.failure();
+      if (failure?.errorText) {
+        entry.failureText = failure.errorText;
+        entry.responseTimestamp = Date.now();
+      }
+    });
+
+    page.on('response', async (response) => {
+      const request = response.request();
+      const entry = this.requestMap.get(request);
+      if (!entry) return;
+
+      entry.status = response.status();
+      entry.statusText = response.statusText();
+      entry.ok = response.ok();
+      entry.responseHeaders = response.headers();
+      entry.responseTimestamp = Date.now();
+
+      // Only attempt to capture body for XHR/fetch to avoid huge binary payloads
+      const resourceType = request.resourceType();
+      if (resourceType !== 'xhr' && resourceType !== 'fetch') {
+        return;
+      }
+
+      const headers = response.headers();
+      const contentType = headers['content-type'] ?? '';
+      const contentLengthHeader = headers['content-length'];
+      const maxBytes = 200 * 1024; // 200KB cap
+
+      if (contentLengthHeader) {
+        const len = Number(contentLengthHeader);
+        if (!Number.isNaN(len) && len > maxBytes) {
+          entry.responseBodyBytes = len;
+          entry.responseBodyTruncated = true;
+          return;
+        }
+      }
+
+      try {
+        const bodyBuffer = await response.body();
+        entry.responseBodyBytes = bodyBuffer.byteLength;
+        let truncated = false;
+        let buf = bodyBuffer;
+
+        if (buf.byteLength > maxBytes) {
+          buf = buf.subarray(0, maxBytes);
+          truncated = true;
+        }
+
+        const isText =
+          contentType.includes('text/') ||
+          contentType.includes('application/json') ||
+          contentType.includes('application/javascript') ||
+          contentType.includes('application/xml') ||
+          contentType.includes('application/xhtml+xml');
+
+        if (isText) {
+          entry.responseBody = buf.toString('utf8');
+          entry.responseBodyEncoding = 'utf8';
+        } else {
+          entry.responseBody = buf.toString('base64');
+          entry.responseBodyEncoding = 'base64';
+        }
+
+        if (truncated) {
+          entry.responseBodyTruncated = true;
+        }
+      } catch {
+        // Ignore body read errors (e.g. cached/streamed responses)
+      }
     });
   }
 
