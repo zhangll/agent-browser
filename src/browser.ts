@@ -88,6 +88,7 @@ export class BrowserManager {
   private trackedRequests: TrackedRequest[] = [];
   private requestMap: WeakMap<Request, TrackedRequest> = new WeakMap();
   private requestTrackingStarted: boolean = false;
+  private captureResponses: boolean = false;
   private routes: Map<string, (route: Route) => Promise<void>> = new Map();
   private consoleMessages: ConsoleMessage[] = [];
   private pageErrors: PageError[] = [];
@@ -282,7 +283,10 @@ export class BrowserManager {
   /**
    * Start tracking requests
    */
-  startRequestTracking(): void {
+  startRequestTracking(includeResponses: boolean = false): void {
+    if (includeResponses) {
+      this.captureResponses = true;
+    }
     if (this.requestTrackingStarted) {
       return;
     }
@@ -301,6 +305,7 @@ export class BrowserManager {
     });
 
     page.on('requestfailed', (request: Request) => {
+      if (!this.captureResponses) return;
       const entry = this.requestMap.get(request);
       if (!entry) return;
       const failure = request.failure();
@@ -311,6 +316,7 @@ export class BrowserManager {
     });
 
     page.on('response', async (response) => {
+      if (!this.captureResponses) return;
       const request = response.request();
       const entry = this.requestMap.get(request);
       if (!entry) return;
@@ -330,7 +336,7 @@ export class BrowserManager {
       const headers = response.headers();
       const contentType = headers['content-type'] ?? '';
       const contentLengthHeader = headers['content-length'];
-      const maxBytes = 200 * 1024; // 200KB cap
+      const maxBytes = 500 * 1024; // 500KB cap
 
       if (contentLengthHeader) {
         const len = Number(contentLengthHeader);
@@ -832,9 +838,7 @@ export class BrowserManager {
       }
 
       // Filter out pages with empty URLs, which can cause Playwright to hang
-      const allPages = contexts
-        .flatMap((context) => context.pages())
-        .filter((page) => page.url());
+      const allPages = contexts.flatMap((context) => context.pages()).filter((page) => page.url());
 
       if (allPages.length === 0) {
         throw new Error('No page found. Make sure the app has loaded content.');

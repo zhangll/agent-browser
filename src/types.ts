@@ -213,6 +213,7 @@ export interface RequestsCommand extends BaseCommand {
   action: 'requests';
   filter?: string; // URL pattern to filter
   clear?: boolean;
+  includeResponse?: boolean;
 }
 
 // Download handling

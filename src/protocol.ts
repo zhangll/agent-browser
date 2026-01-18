@@ -214,6 +214,7 @@ const requestsSchema = baseCommandSchema.extend({
   action: z.literal('requests'),
   filter: z.string().optional(),
   clear: z.boolean().optional(),
+  includeResponse: z.boolean().optional(),
 });
 
 const downloadSchema = baseCommandSchema.extend({

@@ -892,6 +892,7 @@ Subcommands:
   requests [options]         List captured requests
     --clear                  Clear request log
     --filter <pattern>       Filter by URL pattern
+    --include-response       Include status/headers/body for xhr/fetch (<=500KB)
 
 Global Options:
   --json               Output as JSON

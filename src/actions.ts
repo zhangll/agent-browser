@@ -1063,7 +1063,7 @@ async function handleRequests(
   }
 
   // Start tracking if not already
-  browser.startRequestTracking();
+  browser.startRequestTracking(!!command.includeResponse);
 
   const requests = browser.getRequests(command.filter);
   return successResponse(command.id, { requests });
@@ -1286,13 +1286,10 @@ async function handleStyles(
   // Check if it's a ref - single element
   if (browser.isRef(command.selector)) {
     const locator = browser.getLocator(command.selector);
-    const element = (await locator.evaluate(
-      (el, script) => {
-        const fn = eval(script);
-        return fn(el);
-      },
-      extractStylesScript
-    )) as StylesData['elements'][0];
+    const element = (await locator.evaluate((el, script) => {
+      const fn = eval(script);
+      return fn(el);
+    }, extractStylesScript)) as StylesData['elements'][0];
     return successResponse(command.id, { elements: [element] });
   }
 

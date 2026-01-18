@@ -959,9 +959,13 @@ fn parse_network(rest: &[&str], id: &str) -> Result<Value, ParseError> {
             let clear = rest.iter().any(|&s| s == "--clear");
             let filter_idx = rest.iter().position(|&s| s == "--filter");
             let filter = filter_idx.and_then(|i| rest.get(i + 1).map(|s| *s));
+            let include_response = rest.iter().any(|&s| s == "--include-response");
             let mut cmd = json!({ "id": id, "action": "requests", "clear": clear });
             if let Some(f) = filter {
                 cmd["filter"] = json!(f);
+            }
+            if include_response {
+                cmd["includeResponse"] = json!(true);
             }
             Ok(cmd)
         }
